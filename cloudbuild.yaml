@@ -1,0 +1,54 @@
+steps:
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/location-history-mcp-server:$SHORT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/location-history-mcp-server:latest'
+      - '.'
+
+  # Push the container image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/location-history-mcp-server:$SHORT_SHA'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/location-history-mcp-server:latest'
+
+  # Deploy container image to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'location-history-mcp-server'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/location-history-mcp-server:latest'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--port'
+      - '8000'
+      - '--memory'
+      - '512Mi'
+      - '--timeout'
+      - '300'
+      - '--set-env-vars'
+      - 'NODE_ENV=production,DEFAULT_USER_ID=lucashanson132@gmail.com'
+
+images:
+  - 'gcr.io/$PROJECT_ID/location-history-mcp-server:$SHORT_SHA'
+  - 'gcr.io/$PROJECT_ID/location-history-mcp-server:latest'
+
+substitutions:
+  _SHORT_SHA: 'latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

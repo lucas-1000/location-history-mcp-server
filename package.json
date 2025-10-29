@@ -1,0 +1,37 @@
+{
+  "name": "location-history-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for personal location tracking with place recognition",
+  "main": "build/index.js",
+  "type": "module",
+  "bin": {
+    "location-history-mcp-server": "./build/index.js"
+  },
+  "scripts": {
+    "build": "tsc && chmod +x build/index.js",
+    "start": "node build/index.js",
+    "dev": "tsx watch src/index.ts",
+    "inspector": "npx @modelcontextprotocol/inspector node build/index.js"
+  },
+  "keywords": ["mcp", "location-tracking", "gps", "chatgpt", "claude", "postgis"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@google-cloud/secret-manager": "^5.6.0",
+    "@googlemaps/google-maps-services-js": "^3.4.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.5",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.7.1",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
