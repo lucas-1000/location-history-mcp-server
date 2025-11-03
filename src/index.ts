@@ -51,6 +51,42 @@ const server = new Server(
 // Define MCP tools
 const tools: Tool[] = [
   {
+    name: 'search',
+    description:
+      'Search through your location history, places, and visits. ' +
+      'Query can include date ranges, place names, or natural language. Returns searchable results with IDs.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description:
+            'Search query for location data. Can include keywords like "last week", "yesterday", ' +
+            '"Home", "Work", specific places, or time periods.',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'fetch',
+    description:
+      'Retrieve complete details for a specific location item by ID. ' +
+      'Use this after finding items with the search tool.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: {
+          type: 'string',
+          description:
+            'The unique identifier for the location item. Format: type:id ' +
+            '(e.g., "place:123", "visit:456", "location:2024-01-15T10:30:00Z")',
+        },
+      },
+      required: ['id'],
+    },
+  },
+  {
     name: 'get_current_location',
     description: 'Get your most recent location',
     inputSchema: {
@@ -287,6 +323,38 @@ const tools: Tool[] = [
   },
 ];
 
+// Helper function to parse date queries
+function parseDateQuery(query: string): { start?: Date; end?: Date } {
+  const now = new Date();
+  const lowerQuery = query.toLowerCase();
+
+  if (lowerQuery.includes('today')) {
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return { start: today, end: now };
+  }
+
+  if (lowerQuery.includes('yesterday')) {
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const yesterdayStart = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
+    const yesterdayEnd = new Date(yesterdayStart.getTime() + 24 * 60 * 60 * 1000);
+    return { start: yesterdayStart, end: yesterdayEnd };
+  }
+
+  const lastDaysMatch = lowerQuery.match(/last (\d+) days?/);
+  if (lastDaysMatch) {
+    const days = parseInt(lastDaysMatch[1]);
+    return { start: new Date(now.getTime() - days * 24 * 60 * 60 * 1000), end: now };
+  }
+
+  const lastWeekMatch = lowerQuery.match(/last week/);
+  if (lastWeekMatch) {
+    return { start: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000), end: now };
+  }
+
+  // Default to last 7 days
+  return { start: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000), end: now };
+}
+
 // Tool handlers
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return { tools };
@@ -299,6 +367,146 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   try {
     switch (name) {
+      case 'search': {
+        const query = args?.query as string;
+        if (!query) {
+          throw new Error('Query parameter is required');
+        }
+
+        console.log(`🔍 Executing search with query: "${query}"`);
+        const { start, end } = parseDateQuery(query);
+        const lowerQuery = query.toLowerCase();
+
+        const results: any[] = [];
+
+        // Search in places if query contains place-related keywords or place names
+        const places = await database.getAllPlaces(USER_ID);
+        const searchPlaces = places.filter(p =>
+          (p.name && lowerQuery.includes(p.name.toLowerCase())) ||
+          (p.google_place_name && lowerQuery.includes(p.google_place_name.toLowerCase())) ||
+          lowerQuery.includes('place') ||
+          lowerQuery.includes('visit')
+        );
+
+        // Add place results
+        for (const place of searchPlaces.slice(0, 10)) {
+          results.push({
+            id: `place:${place.id}`,
+            title: `Place: ${place.name || place.google_place_name || '(unlabeled)'}`,
+            text: `${place.name || place.google_place_name || 'Unnamed place'}. Visited ${place.visit_count || 0} times. Category: ${place.category || 'unknown'}`,
+            url: `https://www.google.com/maps/search/?api=1&query=${place.center_lat},${place.center_lng}`,
+          });
+        }
+
+        // Get recent visits
+        if (start && end) {
+          const visits = await database.getPlaceVisits(USER_ID, start, end);
+
+          for (const visit of visits.slice(0, 20)) {
+            const placeName = visit.place?.name || visit.place?.google_place_name || '(unlabeled)';
+            results.push({
+              id: `visit:${visit.id}`,
+              title: `Visit: ${placeName}`,
+              text: `Visited ${placeName} on ${new Date(visit.arrival_time).toLocaleString()}. Duration: ${visit.duration_minutes} minutes`,
+              url: `https://www.google.com/maps/search/?api=1&query=${visit.place?.center_lat},${visit.place?.center_lng}`,
+            });
+          }
+        }
+
+        console.log(`✅ Search completed successfully. Found ${results.length} results`);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({ results }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'fetch': {
+        const id = args?.id as string;
+        if (!id) {
+          throw new Error('ID parameter is required');
+        }
+
+        console.log(`📥 Executing fetch with id: "${id}"`);
+        const [type, itemId] = id.split(':');
+
+        let result: any;
+
+        if (type === 'place') {
+          const places = await database.getAllPlaces(USER_ID);
+          const place = places.find(p => p.id === parseInt(itemId));
+
+          if (!place) {
+            throw new Error(`Place not found for ID: ${id}`);
+          }
+
+          result = {
+            id,
+            title: `Place: ${place.name || place.google_place_name || '(unlabeled)'}`,
+            text: JSON.stringify({
+              name: place.name,
+              googleName: place.google_place_name,
+              address: place.address,
+              category: place.category,
+              visitCount: place.visit_count,
+              coordinates: {
+                latitude: place.center_lat,
+                longitude: place.center_lng,
+              },
+            }, null, 2),
+            url: `https://www.google.com/maps/search/?api=1&query=${place.center_lat},${place.center_lng}`,
+            metadata: {
+              type: 'place',
+              retrieved_at: new Date().toISOString(),
+            },
+          };
+        } else if (type === 'visit') {
+          const allVisits = await database.getPlaceVisits(USER_ID);
+          const visit = allVisits.find(v => v.id === parseInt(itemId));
+
+          if (!visit) {
+            throw new Error(`Visit not found for ID: ${id}`);
+          }
+
+          result = {
+            id,
+            title: `Visit: ${visit.place?.name || '(unlabeled)'}`,
+            text: JSON.stringify({
+              place: {
+                name: visit.place?.name,
+                googleName: visit.place?.google_place_name,
+                category: visit.place?.category,
+              },
+              arrivalTime: visit.arrival_time,
+              departureTime: visit.departure_time,
+              durationMinutes: visit.duration_minutes,
+            }, null, 2),
+            url: `https://www.google.com/maps/search/?api=1&query=${visit.place?.center_lat},${visit.place?.center_lng}`,
+            metadata: {
+              type: 'place_visit',
+              retrieved_at: new Date().toISOString(),
+            },
+          };
+        } else {
+          throw new Error(`Unknown type: ${type}`);
+        }
+
+        console.log(`✅ Fetch completed successfully`);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
       case 'get_current_location': {
         const location = await database.getLatestLocation(USER_ID);
         return {
@@ -906,6 +1114,7 @@ app.post('/upload', async (req, res) => {
       speed: loc.speed,
       course: loc.course,
       timestamp: new Date(loc.timestamp),
+      local_timezone: loc.timezone,
       device_model: payload.device.model,
       device_os: payload.device.os,
       app_version: payload.device.appVersion,
@@ -937,6 +1146,146 @@ app.post('/upload', async (req, res) => {
       error: 'Failed to process upload',
       details: error instanceof Error ? error.message : String(error),
     });
+  }
+});
+
+// REFERENCE: How to convert bad timestamps (should have used this instead of deleting!)
+// Fix timestamps that were sent as seconds but interpreted as milliseconds
+app.post('/debug/fix-timestamps', async (req, res) => {
+  try {
+    const client = await database['pool'].connect();
+    try {
+      // The bug: iOS sent timestamps as seconds (e.g., 1730500000)
+      // JavaScript interpreted as milliseconds, storing dates in Jan 1970
+      // Fix: multiply epoch seconds by 1000 to get correct timestamp
+
+      const updateResult = await client.query(`
+        UPDATE location_points
+        SET timestamp = to_timestamp(EXTRACT(EPOCH FROM timestamp) * 1000)
+        WHERE user_id = $1
+          AND timestamp < '2020-01-01'
+      `, [USER_ID]);
+
+      res.json({
+        message: 'Fixed timestamp encoding',
+        updated_count: updateResult.rowCount,
+        user_id: USER_ID,
+        explanation: 'Converted timestamps from milliseconds interpretation to seconds'
+      });
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Fix timestamps error:', error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Clear bad timestamp data (one-time cleanup) - DEPRECATED, should use fix-timestamps instead
+app.post('/debug/clear-bad-timestamps', async (req, res) => {
+  try {
+    const client = await database['pool'].connect();
+    try {
+      // First, get count of what will be deleted
+      const countResult = await client.query(`
+        SELECT COUNT(*) as count
+        FROM location_points
+        WHERE user_id = $1
+          AND timestamp < '2020-01-01'
+      `, [USER_ID]);
+
+      // Delete the bad data
+      const deleteResult = await client.query(`
+        DELETE FROM location_points
+        WHERE user_id = $1
+          AND timestamp < '2020-01-01'
+      `, [USER_ID]);
+
+      res.json({
+        message: 'Cleared bad timestamp data',
+        deleted_count: deleteResult.rowCount,
+        confirmed_count: countResult.rows[0].count,
+        user_id: USER_ID
+      });
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Clear bad timestamps error:', error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Debug endpoint to see sample data
+app.get('/debug/sample', async (req, res) => {
+  try {
+    const client = await database['pool'].connect();
+    try {
+      const result = await client.query(`
+        SELECT
+          id, latitude, longitude, timestamp, device_model,
+          accuracy, created_at
+        FROM location_points
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        LIMIT 20
+      `, [USER_ID]);
+
+      res.json({
+        user_id: USER_ID,
+        sample_count: result.rows.length,
+        samples: result.rows,
+      });
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Debug sample error:', error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Debug endpoint to check database contents
+app.get('/debug/stats', async (req, res) => {
+  try {
+    const client = await database['pool'].connect();
+    try {
+      const result = await client.query(`
+        SELECT
+          COUNT(*) as total_points,
+          COUNT(DISTINCT user_id) as unique_users,
+          COUNT(DISTINCT DATE(timestamp)) as unique_days,
+          MIN(timestamp) as earliest,
+          MAX(timestamp) as latest,
+          COUNT(CASE WHEN place_id IS NOT NULL THEN 1 END) as assigned_to_place,
+          COUNT(CASE WHEN place_id IS NULL THEN 1 END) as unprocessed
+        FROM location_points
+        WHERE user_id = $1
+      `, [USER_ID]);
+
+      const recentResult = await client.query(`
+        SELECT
+          DATE(timestamp) as date,
+          COUNT(*) as point_count
+        FROM location_points
+        WHERE user_id = $1
+          AND timestamp >= NOW() - INTERVAL '30 days'
+        GROUP BY DATE(timestamp)
+        ORDER BY date DESC
+        LIMIT 30
+      `, [USER_ID]);
+
+      res.json({
+        user_id: USER_ID,
+        overall: result.rows[0],
+        last_30_days: recentResult.rows,
+      });
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Debug stats error:', error);
+    res.status(500).json({ error: String(error) });
   }
 });
 

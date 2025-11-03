@@ -4,7 +4,7 @@ steps:
     args:
       - 'build'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/location-history-mcp-server:$SHORT_SHA'
+      - 'gcr.io/$PROJECT_ID/location-history-mcp-server:$_SHORT_SHA'
       - '-t'
       - 'gcr.io/$PROJECT_ID/location-history-mcp-server:latest'
       - '.'
@@ -13,7 +13,7 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'gcr.io/$PROJECT_ID/location-history-mcp-server:$SHORT_SHA'
+      - 'gcr.io/$PROJECT_ID/location-history-mcp-server:$_SHORT_SHA'
 
   - name: 'gcr.io/cloud-builders/docker'
     args:
@@ -44,7 +44,7 @@ steps:
       - 'NODE_ENV=production,DEFAULT_USER_ID=lucashanson132@gmail.com'
 
 images:
-  - 'gcr.io/$PROJECT_ID/location-history-mcp-server:$SHORT_SHA'
+  - 'gcr.io/$PROJECT_ID/location-history-mcp-server:$_SHORT_SHA'
   - 'gcr.io/$PROJECT_ID/location-history-mcp-server:latest'
 
 substitutions:

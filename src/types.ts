@@ -13,6 +13,7 @@ export interface LocationPoint {
   speed?: number;
   course?: number;
   timestamp: Date;
+  local_timezone?: string;
   device_model?: string;
   device_os?: string;
   app_version?: string;
@@ -93,6 +94,7 @@ export interface LocationUploadPayload {
     speed?: number;
     course?: number;
     timestamp: string; // ISO format
+    timezone?: string; // IANA timezone (e.g., "America/Los_Angeles")
   }>;
   device: {
     model: string;

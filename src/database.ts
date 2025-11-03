@@ -44,6 +44,7 @@ export class Database {
           speed NUMERIC(6, 2),
           course NUMERIC(5, 2),
           timestamp TIMESTAMPTZ NOT NULL,
+          local_timezone VARCHAR(50),
           device_model VARCHAR(255),
           device_os VARCHAR(255),
           app_version VARCHAR(50),
@@ -133,10 +134,10 @@ export class Database {
           `
           INSERT INTO location_points (
             user_id, latitude, longitude, accuracy, altitude,
-            altitude_accuracy, speed, course, timestamp,
+            altitude_accuracy, speed, course, timestamp, local_timezone,
             device_model, device_os, app_version, geom
           )
-          VALUES ($1, $2::numeric, $3::numeric, $4, $5, $6, $7, $8, $9, $10, $11, $12, ST_SetSRID(ST_MakePoint(CAST($3 AS double precision), CAST($2 AS double precision)), 4326)::geography)
+          VALUES ($1, $2::numeric, $3::numeric, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, ST_SetSRID(ST_MakePoint(CAST($3 AS double precision), CAST($2 AS double precision)), 4326)::geography)
           ON CONFLICT (user_id, timestamp, latitude, longitude) DO NOTHING
           RETURNING id
           `,
@@ -150,6 +151,7 @@ export class Database {
             loc.speed || null,
             loc.course || null,
             loc.timestamp,
+            loc.local_timezone || null,
             loc.device_model || null,
             loc.device_os || null,
             loc.app_version || null,
