@@ -54,6 +54,9 @@ export class Database {
           UNIQUE(user_id, timestamp, latitude, longitude)
         );
 
+        -- Migration: Add local_timezone column if it doesn't exist
+        ALTER TABLE location_points ADD COLUMN IF NOT EXISTS local_timezone VARCHAR(50);
+
         CREATE INDEX IF NOT EXISTS idx_location_user_time
           ON location_points(user_id, timestamp DESC);
         CREATE INDEX IF NOT EXISTS idx_location_timestamp
