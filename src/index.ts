@@ -9,6 +9,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import express from 'express';
 import dotenv from 'dotenv';
+import geoTz from 'geo-tz';
 import { Database } from './database.js';
 import { PlacesAnalyzer } from './places-analyzer.js';
 import { GooglePlacesClient } from './google-places.js';
@@ -1300,6 +1301,91 @@ app.get('/health', (req, res) => {
 
 app.get('/tools', (req, res) => {
   res.json({ tools });
+});
+
+// Migration endpoint to backfill timezones
+app.post('/migrate/timezones', async (req, res) => {
+  console.log('🔄 Starting timezone backfill migration...');
+
+  try {
+    // Get count of records without timezone
+    const countResult = await database.query(`
+      SELECT COUNT(*) as count
+      FROM location_points
+      WHERE local_timezone IS NULL
+    `);
+    const totalRecords = parseInt(countResult.rows[0].count);
+
+    if (totalRecords === 0) {
+      console.log('✅ No records need timezone backfill!');
+      return res.json({
+        status: 'complete',
+        message: 'No records need timezone backfill',
+        processed: 0,
+        updated: 0,
+      });
+    }
+
+    console.log(`📊 Found ${totalRecords} records without timezone`);
+
+    let updatedCount = 0;
+    let errorCount = 0;
+    let offset = 0;
+    const batchSize = 100;
+
+    while (offset < totalRecords) {
+      // Fetch batch
+      const result = await database.query(`
+        SELECT id, latitude, longitude
+        FROM location_points
+        WHERE local_timezone IS NULL
+        ORDER BY id
+        LIMIT $1 OFFSET $2
+      `, [batchSize, offset]);
+
+      const batch = result.rows;
+      if (batch.length === 0) break;
+
+      // Process each record
+      for (const record of batch) {
+        try {
+          const timezones = geoTz.find(record.latitude, record.longitude);
+          const timezone = timezones[0];
+
+          if (timezone) {
+            await database.query(`
+              UPDATE location_points
+              SET local_timezone = $1
+              WHERE id = $2
+            `, [timezone, record.id]);
+            updatedCount++;
+          } else {
+            errorCount++;
+          }
+        } catch (error) {
+          console.error(`Error processing record ${record.id}:`, error);
+          errorCount++;
+        }
+      }
+
+      offset += batchSize;
+      console.log(`📈 Progress: ${offset}/${totalRecords} - Updated: ${updatedCount}, Errors: ${errorCount}`);
+    }
+
+    console.log('✅ Migration complete!');
+    res.json({
+      status: 'complete',
+      totalRecords,
+      updated: updatedCount,
+      errors: errorCount,
+    });
+  } catch (error) {
+    console.error('❌ Migration failed:', error);
+    res.status(500).json({
+      status: 'error',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
 });
 
 // Start server

@@ -571,6 +571,13 @@ export class Database {
   }
 
   /**
+   * Execute a raw SQL query (for migrations and admin tasks)
+   */
+  async query(text: string, params?: any[]): Promise<any> {
+    return this.pool.query(text, params);
+  }
+
+  /**
    * Close database connection
    */
   async close(): Promise<void> {
