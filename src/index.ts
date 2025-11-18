@@ -1290,6 +1290,131 @@ app.get('/debug/stats', async (req, res) => {
   }
 });
 
+// REST API endpoint for daily location summary (used by insights aggregator)
+app.get('/api/daily', async (req, res) => {
+  try {
+    const { date, userId } = req.query;
+
+    if (!date) {
+      return res.status(400).json({ error: 'date parameter is required (YYYY-MM-DD)' });
+    }
+
+    const userIdToUse = (userId as string) || USER_ID;
+
+    // Parse date and create start/end of day
+    const dateObj = new Date(date as string);
+    const startOfDay = new Date(dateObj);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(dateObj);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    console.log(`📍 Fetching location data for user ${userIdToUse} on ${date}`);
+
+    // Get place visits for the day
+    const visits = await database.getPlaceVisits(userIdToUse, startOfDay, endOfDay);
+
+    // Get location history to calculate movement activities
+    const locations = await database.getLocationHistory(userIdToUse, startOfDay, endOfDay, 1000);
+
+    // Format places visited
+    const places = visits.map(v => ({
+      name: v.place?.name || v.place?.google_place_name || '(unnamed place)',
+      address: v.place?.address || '',
+      startTime: v.arrival_time?.toISOString() || '',
+      endTime: v.departure_time?.toISOString() || '',
+      duration_minutes: v.duration_minutes || 0,
+    }));
+
+    // Calculate activities from location points
+    // Group consecutive points with similar speeds to identify activity types
+    const activities: Array<{ type: string; distance_meters: number; duration_minutes: number }> = [];
+
+    // Simple activity detection based on speed
+    let currentActivity: { type: string; startIdx: number; distance: number } | null = null;
+
+    for (let i = 1; i < locations.length; i++) {
+      const prev = locations[i - 1];
+      const curr = locations[i];
+
+      // Calculate distance using Haversine formula (simplified)
+      const R = 6371000; // Earth's radius in meters
+      const dLat = (curr.latitude - prev.latitude) * Math.PI / 180;
+      const dLon = (curr.longitude - prev.longitude) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(prev.latitude * Math.PI / 180) * Math.cos(curr.latitude * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      const distance = R * c;
+
+      const timeDiff = (curr.timestamp.getTime() - prev.timestamp.getTime()) / 1000; // seconds
+      const speedMps = timeDiff > 0 ? distance / timeDiff : 0;
+
+      // Classify activity by speed
+      let activityType = 'STATIONARY';
+      if (speedMps > 10) activityType = 'DRIVING'; // > 36 km/h
+      else if (speedMps > 2) activityType = 'CYCLING'; // 7-36 km/h
+      else if (speedMps > 0.5) activityType = 'WALKING'; // 1.8-7 km/h
+
+      // Continue or start new activity
+      if (currentActivity && currentActivity.type === activityType) {
+        currentActivity.distance += distance;
+      } else {
+        // Save previous activity if significant
+        if (currentActivity && currentActivity.distance > 50) { // min 50m
+          const duration = (curr.timestamp.getTime() - locations[currentActivity.startIdx].timestamp.getTime()) / 60000;
+          activities.push({
+            type: currentActivity.type,
+            distance_meters: Math.round(currentActivity.distance),
+            duration_minutes: Math.round(duration),
+          });
+        }
+
+        // Start new activity
+        if (activityType !== 'STATIONARY') {
+          currentActivity = {
+            type: activityType,
+            startIdx: i,
+            distance: distance,
+          };
+        } else {
+          currentActivity = null;
+        }
+      }
+    }
+
+    // Save final activity
+    if (currentActivity && currentActivity.distance > 50) {
+      const lastPoint = locations[locations.length - 1];
+      const startPoint = locations[currentActivity.startIdx];
+      const duration = (lastPoint.timestamp.getTime() - startPoint.timestamp.getTime()) / 60000;
+      activities.push({
+        type: currentActivity.type,
+        distance_meters: Math.round(currentActivity.distance),
+        duration_minutes: Math.round(duration),
+      });
+    }
+
+    console.log(`✅ Found ${places.length} places and ${activities.length} activities for ${date}`);
+
+    res.json({
+      date: date,
+      userId: userIdToUse,
+      places: places,
+      activities: activities,
+      _metadata: {
+        totalLocationPoints: locations.length,
+        totalVisits: visits.length,
+      },
+    });
+  } catch (error) {
+    console.error('❌ Error fetching daily location data:', error);
+    res.status(500).json({
+      error: 'Failed to fetch location data',
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',

@@ -21,5 +21,5 @@ RUN npm prune --production
 # Expose port
 EXPOSE 8000
 
-# Start server
-CMD ["npm", "start"]
+# Start OAuth-enabled server
+CMD ["node", "build/http-server-oauth.js"]

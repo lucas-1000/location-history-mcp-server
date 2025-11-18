@@ -20,15 +20,18 @@
     "@modelcontextprotocol/sdk": "^1.0.4",
     "@google-cloud/secret-manager": "^5.6.0",
     "@googlemaps/google-maps-services-js": "^3.4.0",
+    "axios": "^1.7.9",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "geo-tz": "^8.1.1",
-    "pg": "^8.13.1"
+    "pg": "^8.13.1",
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.5",
     "@types/pg": "^8.11.10",
+    "@types/uuid": "^9.0.7",
     "tsx": "^4.7.1",
     "typescript": "^5.7.2"
   },
