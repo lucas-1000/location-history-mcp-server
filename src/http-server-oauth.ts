@@ -29,6 +29,7 @@ import {
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import express from 'express';
+import cors from 'cors';
 import dotenv from 'dotenv';
 import geoTz from 'geo-tz';
 import { AsyncLocalStorage } from 'async_hooks';

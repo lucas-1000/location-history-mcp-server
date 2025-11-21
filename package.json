@@ -13,14 +13,23 @@
     "dev": "tsx watch src/index.ts",
     "inspector": "npx @modelcontextprotocol/inspector node build/index.js"
   },
-  "keywords": ["mcp", "location-tracking", "gps", "chatgpt", "claude", "postgis"],
+  "keywords": [
+    "mcp",
+    "location-tracking",
+    "gps",
+    "chatgpt",
+    "claude",
+    "postgis"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.4",
     "@google-cloud/secret-manager": "^5.6.0",
     "@googlemaps/google-maps-services-js": "^3.4.0",
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@types/cors": "^2.8.19",
     "axios": "^1.7.9",
+    "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "geo-tz": "^8.1.1",
