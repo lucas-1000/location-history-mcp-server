@@ -1258,7 +1258,12 @@ function setupToolHandlers(server: Server) {
 // SSE endpoint for MCP with OAuth authentication
 const transports: Map<string, SSEServerTransport> = new Map();
 
-app.get('/sse', async (req, res) => {
+/**
+ * SSE Endpoint Handler - Main MCP connection endpoint
+ * Requires Bearer token authentication in Authorization header
+ * This handler is reused for both /sse and /SSE routes (case-insensitive)
+ */
+async function handleSSEConnection(req: any, res: any) {
   console.log('📡 SSE connection request received');
 
   // Extract Bearer token from Authorization header
@@ -1329,10 +1334,19 @@ app.get('/sse', async (req, res) => {
     sessionUsers.delete(sessionId);
     console.log(`🔌 SSE connection closed, session cleaned up: ${sessionId}`);
   });
-});
+}
 
-// Message endpoint for SSE transport
-app.post('/message', async (req, res) => {
+// Register SSE endpoint handlers for both lowercase and uppercase
+// Some MCP clients (like Claude) use uppercase /SSE
+app.get('/sse', handleSSEConnection);
+app.get('/SSE', handleSSEConnection);
+
+/**
+ * Message Endpoint Handler - Routes messages to correct SSE session
+ * This is critical for MCP protocol message routing
+ * This handler is reused for both /message and /MESSAGE routes (case-insensitive)
+ */
+async function handleMessagePost(req: any, res: any) {
   const sessionId = req.query.sessionId as string;
 
   if (!sessionId) {
@@ -1355,7 +1369,12 @@ app.post('/message', async (req, res) => {
       res.status(500).json({ error: 'Internal server error' });
     }
   }
-});
+}
+
+// Register message endpoint handlers for both lowercase and uppercase
+// Some MCP clients may use uppercase /MESSAGE
+app.post('/message', handleMessagePost);
+app.post('/MESSAGE', handleMessagePost);
 
 // Upload endpoint for iOS app - requires Bearer token authentication
 app.post('/upload', async (req, res) => {
