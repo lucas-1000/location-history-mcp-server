@@ -132,17 +132,17 @@ setupToolHandlers(mcpServer);
  */
 async function getUserIdFromToken(accessToken: string): Promise<number> {
   try {
-    const response = await axios.get(`${BACKEND_URL}/api/auth/validate`, {
+    const response = await axios.get(`${BACKEND_URL}/api/user/me`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
     });
 
-    if (!response.data || !response.data.userId) {
+    if (!response.data || !response.data.id) {
       throw new Error('Invalid token response from backend');
     }
 
-    return response.data.userId;
+    return response.data.id;
   } catch (error) {
     if (axios.isAxiosError(error)) {
       throw new Error(`Token validation failed: ${error.response?.status} ${error.response?.statusText}`);
@@ -178,6 +178,55 @@ app.get('/.well-known/oauth-protected-resource', (req, res) => {
     mcp_endpoint: `${baseUrl}/sse`,
   });
 });
+
+// ============================================================================
+// CLAUDE OAUTH ROUTING WORKAROUND
+// ============================================================================
+// Problem: When Claude is configured with URL https://server/sse, it appends
+// /sse to the OAuth discovery URLs, resulting in requests to:
+//   - /.well-known/oauth-protected-resource/sse (404)
+//   - /.well-known/oauth-authorization-server/sse (404)
+// Solution: Add route handlers with /sse suffix that serve the same OAuth metadata
+
+/**
+ * RFC 9728 Protected Resource Metadata - Workaround for Claude routing
+ * Serves the same response as the main endpoint but with /sse suffix
+ */
+app.get('/.well-known/oauth-protected-resource/sse', (req, res) => {
+  const baseUrl = PUBLIC_URL;
+
+  res.json({
+    resource: baseUrl,
+    authorization_servers: [BACKEND_URL],
+    bearer_methods_supported: ['header'],
+    resource_signing_alg_values_supported: [],
+    resource_documentation: `${baseUrl}/docs`,
+    resource_policy_uri: `${baseUrl}/policy`,
+    mcp_endpoint: `${baseUrl}/sse`,
+  });
+});
+
+/**
+ * Authorization Server Metadata - Workaround for Claude routing
+ * Proxies to the authorization server's metadata endpoint
+ */
+app.get('/.well-known/oauth-authorization-server/sse', async (req, res) => {
+  const authServerUrl = BACKEND_URL;
+
+  try {
+    // Fetch and proxy the authorization server metadata
+    const response = await fetch(`${authServerUrl}/.well-known/oauth-authorization-server`);
+    const metadata = await response.json();
+    res.json(metadata);
+  } catch (error) {
+    console.error('❌ Failed to fetch authorization server metadata:', error);
+    res.status(502).json({ error: 'Failed to fetch authorization server metadata' });
+  }
+});
+
+console.log('✅ Claude OAuth routing workaround enabled');
+console.log('   Routes added: /.well-known/oauth-protected-resource/sse');
+console.log('   Routes added: /.well-known/oauth-authorization-server/sse');
 
 // Health check endpoint
 app.get('/health', (req, res) => {
