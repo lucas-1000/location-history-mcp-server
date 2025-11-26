@@ -117,7 +117,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --add-cloudsql-instances="personal-assistant-e4351:us-central1:health-data-db" \
   --memory=512Mi \
   --cpu=1 \
-  --timeout=300 \
+  --timeout=3600 \
   --max-instances=10 \
   --project="$PROJECT_ID"
 

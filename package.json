@@ -11,7 +11,13 @@
     "build": "tsc && chmod +x build/index.js",
     "start": "node build/index.js",
     "dev": "tsx watch src/index.ts",
-    "inspector": "npx @modelcontextprotocol/inspector node build/index.js"
+    "watch": "tsx watch src/index.ts",
+    "clean": "rm -rf dist coverage",
+    "lint": "eslint 'src/**/*.{ts,tsx}'",
+    "lint:fix": "eslint 'src/**/*.{ts,tsx}' --fix",
+    "format": "prettier --write 'src/**/*.{ts,tsx,json,md}'",
+    "format:check": "prettier --check 'src/**/*.{ts,tsx,json,md}'",
+    "test": "echo 'No tests configured yet'"
   },
   "keywords": [
     "mcp",

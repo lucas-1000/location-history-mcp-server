@@ -1,4 +1,4 @@
-import { Client, PlaceInputType } from '@googlemaps/google-maps-services-js';
+import { Client } from '@googlemaps/google-maps-services-js';
 import { Place } from './types.js';
 
 /**
@@ -16,10 +16,7 @@ export class GooglePlacesClient {
   /**
    * Reverse geocode coordinates to get place information
    */
-  async reverseGeocode(
-    lat: number,
-    lng: number
-  ): Promise<Partial<Place> | null> {
+  async reverseGeocode(lat: number, lng: number): Promise<Partial<Place> | null> {
     try {
       const response = await this.client.reverseGeocode({
         params: {
@@ -114,15 +111,7 @@ export class GooglePlacesClient {
     const categoryMap: Record<string, string[]> = {
       home: ['home', 'premise', 'street_address'],
       work: ['office', 'establishment'],
-      restaurant: [
-        'restaurant',
-        'food',
-        'cafe',
-        'bar',
-        'bakery',
-        'meal_takeaway',
-        'meal_delivery',
-      ],
+      restaurant: ['restaurant', 'food', 'cafe', 'bar', 'bakery', 'meal_takeaway', 'meal_delivery'],
       gym: ['gym', 'health', 'fitness'],
       store: [
         'store',
@@ -131,13 +120,7 @@ export class GooglePlacesClient {
         'grocery_or_supermarket',
         'convenience_store',
       ],
-      transit: [
-        'transit_station',
-        'train_station',
-        'bus_station',
-        'airport',
-        'subway_station',
-      ],
+      transit: ['transit_station', 'train_station', 'bus_station', 'airport', 'subway_station'],
       entertainment: [
         'movie_theater',
         'museum',

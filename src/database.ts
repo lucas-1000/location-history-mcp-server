@@ -1,11 +1,5 @@
 import pg from 'pg';
-import {
-  LocationPoint,
-  Place,
-  PlaceVisit,
-  TravelStats,
-  DailySummary,
-} from './types.js';
+import { LocationPoint, Place, PlaceVisit, TravelStats } from './types.js';
 
 export class Database {
   private pool: pg.Pool;
@@ -217,10 +211,7 @@ export class Database {
   /**
    * Get location at specific time (closest match within 10 minutes)
    */
-  async getLocationAtTime(
-    userId: string,
-    timestamp: Date
-  ): Promise<LocationPoint | null> {
+  async getLocationAtTime(userId: string, timestamp: Date): Promise<LocationPoint | null> {
     const result = await this.pool.query(
       `
       SELECT * FROM location_points
@@ -248,12 +239,7 @@ export class Database {
     limit: number = 100
   ): Promise<LocationPoint[]> {
     const conditions = ['user_id = $1'];
-    const values: any[] = [
-      userId,
-      lng,
-      lat,
-      radiusMeters,
-    ];
+    const values: any[] = [userId, lng, lat, radiusMeters];
     let paramIndex = 5;
 
     if (startDate) {
@@ -478,11 +464,7 @@ export class Database {
   /**
    * Get travel statistics for date range
    */
-  async getTravelStats(
-    userId: string,
-    startDate: Date,
-    endDate: Date
-  ): Promise<TravelStats> {
+  async getTravelStats(userId: string, startDate: Date, endDate: Date): Promise<TravelStats> {
     // Calculate total distance using PostGIS
     const distanceResult = await this.pool.query(
       `
@@ -515,8 +497,7 @@ export class Database {
     );
 
     const stats = distanceResult.rows[0];
-    const durationMinutes =
-      (endDate.getTime() - startDate.getTime()) / 1000 / 60;
+    const durationMinutes = (endDate.getTime() - startDate.getTime()) / 1000 / 60;
 
     return {
       total_distance_meters: parseFloat(stats.total_distance || '0'),
@@ -535,10 +516,7 @@ export class Database {
   /**
    * Get unprocessed locations (no place_id assigned)
    */
-  async getUnprocessedLocations(
-    userId: string,
-    limit: number = 1000
-  ): Promise<LocationPoint[]> {
+  async getUnprocessedLocations(userId: string, limit: number = 1000): Promise<LocationPoint[]> {
     const result = await this.pool.query(
       `
       SELECT * FROM location_points
@@ -556,10 +534,7 @@ export class Database {
   /**
    * Update location point with place_id
    */
-  async updateLocationPlace(
-    locationId: number,
-    placeId: number
-  ): Promise<void> {
+  async updateLocationPlace(locationId: number, placeId: number): Promise<void> {
     await this.pool.query(
       `
       UPDATE location_points

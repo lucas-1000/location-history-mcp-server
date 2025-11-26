@@ -22,9 +22,7 @@ export class PlacesAnalyzer {
       return 0;
     }
 
-    console.log(
-      `📍 Processing ${locations.length} unprocessed locations for ${userId}`
-    );
+    console.log(`📍 Processing ${locations.length} unprocessed locations for ${userId}`);
 
     // Find clusters (places where user stayed)
     const clusters = this.clusterLocations(locations);
@@ -83,9 +81,7 @@ export class PlacesAnalyzer {
       }
     }
 
-    console.log(
-      `✅ Processed ${processedCount} locations into ${clusters.length} clusters`
-    );
+    console.log(`✅ Processed ${processedCount} locations into ${clusters.length} clusters`);
     return processedCount;
   }
 
@@ -97,9 +93,7 @@ export class PlacesAnalyzer {
     if (locations.length === 0) return [];
 
     // Sort by timestamp
-    const sorted = [...locations].sort(
-      (a, b) => a.timestamp.getTime() - b.timestamp.getTime()
-    );
+    const sorted = [...locations].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
     const clusters: LocationCluster[] = [];
     let currentCluster: LocationPoint[] = [sorted[0]];
@@ -115,8 +109,7 @@ export class PlacesAnalyzer {
         curr.longitude
       );
 
-      const timeDiffMinutes =
-        (curr.timestamp.getTime() - prev.timestamp.getTime()) / 1000 / 60;
+      const timeDiffMinutes = (curr.timestamp.getTime() - prev.timestamp.getTime()) / 1000 / 60;
 
       // Same cluster if within radius and reasonable time gap (< 30 min)
       if (distance <= this.clusterRadiusMeters && timeDiffMinutes <= 30) {
@@ -142,10 +135,8 @@ export class PlacesAnalyzer {
    * Create cluster summary from points
    */
   private createCluster(points: LocationPoint[]): LocationCluster {
-    const avgLat =
-      points.reduce((sum, p) => sum + p.latitude, 0) / points.length;
-    const avgLng =
-      points.reduce((sum, p) => sum + p.longitude, 0) / points.length;
+    const avgLat = points.reduce((sum, p) => sum + p.latitude, 0) / points.length;
+    const avgLng = points.reduce((sum, p) => sum + p.longitude, 0) / points.length;
 
     const timestamps = points.map((p) => p.timestamp.getTime());
     const start = new Date(Math.min(...timestamps));
@@ -165,12 +156,7 @@ export class PlacesAnalyzer {
   /**
    * Calculate distance between two coordinates using Haversine formula
    */
-  private haversineDistance(
-    lat1: number,
-    lon1: number,
-    lat2: number,
-    lon2: number
-  ): number {
+  private haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
     const R = 6371e3; // Earth's radius in meters
     const φ1 = (lat1 * Math.PI) / 180;
     const φ2 = (lat2 * Math.PI) / 180;
@@ -189,13 +175,8 @@ export class PlacesAnalyzer {
   /**
    * Identify frequent places that haven't been labeled
    */
-  async getUnlabeledFrequentPlaces(
-    userId: string,
-    minVisits: number = 3
-  ): Promise<Place[]> {
+  async getUnlabeledFrequentPlaces(userId: string, minVisits: number = 3): Promise<Place[]> {
     const places = await this.db.getAllPlaces(userId);
-    return places.filter(
-      (p) => !p.name && (p.visit_count || 0) >= minVisits
-    );
+    return places.filter((p) => !p.name && (p.visit_count || 0) >= minVisits);
   }
 }

@@ -29,9 +29,7 @@ import {
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import express from 'express';
-import cors from 'cors';
 import dotenv from 'dotenv';
-import geoTz from 'geo-tz';
 import { AsyncLocalStorage } from 'async_hooks';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
@@ -46,10 +44,10 @@ dotenv.config();
 const PORT = process.env.PORT || 8000;
 const HOST = process.env.HOST || '0.0.0.0';
 const DB_CONNECTION_STRING =
-  process.env.DATABASE_URL ||
-  'postgresql://user:pass@localhost:5432/health_data';
+  process.env.DATABASE_URL || 'postgresql://user:pass@localhost:5432/health_data';
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY || '';
-const BACKEND_URL = process.env.BACKEND_URL || 'https://health-data-storage-835031330028.us-central1.run.app';
+const BACKEND_URL =
+  process.env.BACKEND_URL || 'https://health-data-storage-835031330028.us-central1.run.app';
 const OAUTH_CLIENT_ID = process.env.OAUTH_CLIENT_ID;
 const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET;
 const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
@@ -70,9 +68,7 @@ console.log(`   Database:    ${DB_CONNECTION_STRING.split('@')[1] || 'local'}`);
 // Initialize services
 const database = new Database(DB_CONNECTION_STRING);
 const placesAnalyzer = new PlacesAnalyzer(database);
-const googlePlaces = GOOGLE_PLACES_API_KEY
-  ? new GooglePlacesClient(GOOGLE_PLACES_API_KEY)
-  : null;
+const googlePlaces = GOOGLE_PLACES_API_KEY ? new GooglePlacesClient(GOOGLE_PLACES_API_KEY) : null;
 
 // Initialize database schema
 await database.initialize();
@@ -98,17 +94,6 @@ function getCurrentUserId(): number | undefined {
     console.warn(`⚠️  No user ID found for session: ${sessionId}`);
   }
   return userId;
-}
-
-/**
- * Get the current access token from session context
- */
-function getCurrentAccessToken(): string | undefined {
-  const sessionId = sessionContext.getStore();
-  if (!sessionId) {
-    return undefined;
-  }
-  return sessionTokens.get(sessionId);
 }
 
 // ============================================================================
@@ -145,7 +130,9 @@ async function getUserIdFromToken(accessToken: string): Promise<number> {
     return response.data.id;
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      throw new Error(`Token validation failed: ${error.response?.status} ${error.response?.statusText}`);
+      throw new Error(
+        `Token validation failed: ${error.response?.status} ${error.response?.statusText}`
+      );
     }
     throw error;
   }
@@ -165,7 +152,7 @@ app.use((req, res, next) => {
 
 // RFC 9728: OAuth 2.0 Protected Resource Metadata
 // This enables automatic OAuth discovery by ChatGPT Deep Research
-app.get('/.well-known/oauth-protected-resource', (req, res) => {
+app.get('/.well-known/oauth-protected-resource', (_req, res) => {
   const baseUrl = PUBLIC_URL;
 
   res.json({
@@ -192,7 +179,7 @@ app.get('/.well-known/oauth-protected-resource', (req, res) => {
  * RFC 9728 Protected Resource Metadata - Workaround for Claude routing
  * Serves the same response as the main endpoint but with /sse suffix
  */
-app.get('/.well-known/oauth-protected-resource/sse', (req, res) => {
+app.get('/.well-known/oauth-protected-resource/sse', (_req, res) => {
   const baseUrl = PUBLIC_URL;
 
   res.json({
@@ -210,17 +197,17 @@ app.get('/.well-known/oauth-protected-resource/sse', (req, res) => {
  * Authorization Server Metadata - Workaround for Claude routing
  * Proxies to the authorization server's metadata endpoint
  */
-app.get('/.well-known/oauth-authorization-server/sse', async (req, res) => {
+app.get('/.well-known/oauth-authorization-server/sse', async (_req, res) => {
   const authServerUrl = BACKEND_URL;
 
   try {
     // Fetch and proxy the authorization server metadata
     const response = await fetch(`${authServerUrl}/.well-known/oauth-authorization-server`);
     const metadata = await response.json();
-    res.json(metadata);
+    return res.json(metadata);
   } catch (error) {
     console.error('❌ Failed to fetch authorization server metadata:', error);
-    res.status(502).json({ error: 'Failed to fetch authorization server metadata' });
+    return res.status(502).json({ error: 'Failed to fetch authorization server metadata' });
   }
 });
 
@@ -229,7 +216,7 @@ console.log('   Routes added: /.well-known/oauth-protected-resource/sse');
 console.log('   Routes added: /.well-known/oauth-authorization-server/sse');
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({
     status: 'healthy',
     service: 'location-history-mcp-server',
@@ -252,12 +239,12 @@ app.get('/oauth/authorize', (req, res) => {
   authUrl.searchParams.set('scope', 'location:read location:write');
 
   console.log(`🔐 Redirecting to authorization: ${authUrl.toString()}`);
-  res.redirect(authUrl.toString());
+  return res.redirect(authUrl.toString());
 });
 
 // OAuth callback endpoint
 app.get('/oauth/callback', async (req, res) => {
-  const { code, state, error } = req.query;
+  const { code, state: _state, error } = req.query;
 
   if (error) {
     console.error(`❌ OAuth error: ${error}`);
@@ -289,7 +276,7 @@ app.get('/oauth/callback', async (req, res) => {
 
     console.log('✅ OAuth token exchange successful');
 
-    res.json({
+    return res.json({
       success: true,
       access_token,
       refresh_token,
@@ -299,7 +286,7 @@ app.get('/oauth/callback', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Token exchange failed:', error);
-    res.status(500).json({
+    return res.status(500).json({
       error: 'token_exchange_failed',
       error_description: error instanceof Error ? error.message : 'Unknown error',
     });
@@ -378,8 +365,7 @@ const tools: Tool[] = [
   },
   {
     name: 'get_location_at_time',
-    description:
-      'Find where you were at a specific time (finds closest match within 10 minutes)',
+    description: 'Find where you were at a specific time (finds closest match within 10 minutes)',
     inputSchema: {
       type: 'object',
       properties: {
@@ -424,8 +410,7 @@ const tools: Tool[] = [
   },
   {
     name: 'get_frequent_places',
-    description:
-      'Get your most frequently visited places, ordered by visit count',
+    description: 'Get your most frequently visited places, ordered by visit count',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -463,8 +448,7 @@ const tools: Tool[] = [
   },
   {
     name: 'label_place',
-    description:
-      'Give a name and category to a place (e.g., "Home", "Work", "Equinox Gym")',
+    description: 'Give a name and category to a place (e.g., "Home", "Work", "Equinox Gym")',
     inputSchema: {
       type: 'object',
       properties: {
@@ -478,8 +462,7 @@ const tools: Tool[] = [
         },
         category: {
           type: 'string',
-          description:
-            'Optional category: home, work, gym, restaurant, store, etc.',
+          description: 'Optional category: home, work, gym, restaurant, store, etc.',
         },
       },
       required: ['place_id', 'name'],
@@ -487,8 +470,7 @@ const tools: Tool[] = [
   },
   {
     name: 'get_place_visits',
-    description:
-      'Get all visits to a specific place or all places within a date range',
+    description: 'Get all visits to a specific place or all places within a date range',
     inputSchema: {
       type: 'object',
       properties: {
@@ -514,8 +496,7 @@ const tools: Tool[] = [
   },
   {
     name: 'get_time_at_place',
-    description:
-      'Calculate total time spent at a place (by name or ID) within a date range',
+    description: 'Calculate total time spent at a place (by name or ID) within a date range',
     inputSchema: {
       type: 'object',
       properties: {
@@ -541,8 +522,7 @@ const tools: Tool[] = [
   },
   {
     name: 'enrich_place_with_google',
-    description:
-      'Use Google Places API to get business name and details for a place',
+    description: 'Use Google Places API to get business name and details for a place',
     inputSchema: {
       type: 'object',
       properties: {
@@ -571,8 +551,7 @@ const tools: Tool[] = [
   },
   {
     name: 'process_recent_locations',
-    description:
-      'Trigger place detection and clustering for recent unprocessed location data',
+    description: 'Trigger place detection and clustering for recent unprocessed location data',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -593,7 +572,11 @@ function parseDateQuery(query: string): { start?: Date; end?: Date } {
 
   if (lowerQuery.includes('yesterday')) {
     const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const yesterdayStart = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
+    const yesterdayStart = new Date(
+      yesterday.getFullYear(),
+      yesterday.getMonth(),
+      yesterday.getDate()
+    );
     const yesterdayEnd = new Date(yesterdayStart.getTime() + 24 * 60 * 60 * 1000);
     return { start: yesterdayStart, end: yesterdayEnd };
   }
@@ -651,11 +634,12 @@ function setupToolHandlers(server: Server) {
 
           // Search in places if query contains place-related keywords or place names
           const places = await database.getAllPlaces(USER_ID);
-          const searchPlaces = places.filter(p =>
-            (p.name && lowerQuery.includes(p.name.toLowerCase())) ||
-            (p.google_place_name && lowerQuery.includes(p.google_place_name.toLowerCase())) ||
-            lowerQuery.includes('place') ||
-            lowerQuery.includes('visit')
+          const searchPlaces = places.filter(
+            (p) =>
+              (p.name && lowerQuery.includes(p.name.toLowerCase())) ||
+              (p.google_place_name && lowerQuery.includes(p.google_place_name.toLowerCase())) ||
+              lowerQuery.includes('place') ||
+              lowerQuery.includes('visit')
           );
 
           // Add place results
@@ -673,7 +657,8 @@ function setupToolHandlers(server: Server) {
             const visits = await database.getPlaceVisits(USER_ID, start, end);
 
             for (const visit of visits.slice(0, 20)) {
-              const placeName = visit.place?.name || visit.place?.google_place_name || '(unlabeled)';
+              const placeName =
+                visit.place?.name || visit.place?.google_place_name || '(unlabeled)';
               results.push({
                 id: `visit:${visit.id}`,
                 title: `Visit: ${placeName}`,
@@ -708,7 +693,7 @@ function setupToolHandlers(server: Server) {
 
           if (type === 'place') {
             const places = await database.getAllPlaces(USER_ID);
-            const place = places.find(p => p.id === parseInt(itemId));
+            const place = places.find((p) => p.id === parseInt(itemId));
 
             if (!place) {
               throw new Error(`Place not found for ID: ${id}`);
@@ -717,17 +702,21 @@ function setupToolHandlers(server: Server) {
             result = {
               id,
               title: `Place: ${place.name || place.google_place_name || '(unlabeled)'}`,
-              text: JSON.stringify({
-                name: place.name,
-                googleName: place.google_place_name,
-                address: place.address,
-                category: place.category,
-                visitCount: place.visit_count,
-                coordinates: {
-                  latitude: place.center_lat,
-                  longitude: place.center_lng,
+              text: JSON.stringify(
+                {
+                  name: place.name,
+                  googleName: place.google_place_name,
+                  address: place.address,
+                  category: place.category,
+                  visitCount: place.visit_count,
+                  coordinates: {
+                    latitude: place.center_lat,
+                    longitude: place.center_lng,
+                  },
                 },
-              }, null, 2),
+                null,
+                2
+              ),
               url: `https://www.google.com/maps/search/?api=1&query=${place.center_lat},${place.center_lng}`,
               metadata: {
                 type: 'place',
@@ -736,7 +725,7 @@ function setupToolHandlers(server: Server) {
             };
           } else if (type === 'visit') {
             const allVisits = await database.getPlaceVisits(USER_ID);
-            const visit = allVisits.find(v => v.id === parseInt(itemId));
+            const visit = allVisits.find((v) => v.id === parseInt(itemId));
 
             if (!visit) {
               throw new Error(`Visit not found for ID: ${id}`);
@@ -745,16 +734,20 @@ function setupToolHandlers(server: Server) {
             result = {
               id,
               title: `Visit: ${visit.place?.name || '(unlabeled)'}`,
-              text: JSON.stringify({
-                place: {
-                  name: visit.place?.name,
-                  googleName: visit.place?.google_place_name,
-                  category: visit.place?.category,
+              text: JSON.stringify(
+                {
+                  place: {
+                    name: visit.place?.name,
+                    googleName: visit.place?.google_place_name,
+                    category: visit.place?.category,
+                  },
+                  arrivalTime: visit.arrival_time,
+                  departureTime: visit.departure_time,
+                  durationMinutes: visit.duration_minutes,
                 },
-                arrivalTime: visit.arrival_time,
-                departureTime: visit.departure_time,
-                durationMinutes: visit.duration_minutes,
-              }, null, 2),
+                null,
+                2
+              ),
               url: `https://www.google.com/maps/search/?api=1&query=${visit.place?.center_lat},${visit.place?.center_lng}`,
               metadata: {
                 type: 'place_visit',
@@ -806,12 +799,7 @@ function setupToolHandlers(server: Server) {
           const endDate = new Date(args?.end_date as string);
           const limit = (args?.limit as number) || 1000;
 
-          const locations = await database.getLocationHistory(
-            USER_ID,
-            startDate,
-            endDate,
-            limit
-          );
+          const locations = await database.getLocationHistory(USER_ID, startDate, endDate, limit);
 
           return {
             content: [
@@ -868,12 +856,8 @@ function setupToolHandlers(server: Server) {
           const lat = args?.latitude as number;
           const lng = args?.longitude as number;
           const radius = (args?.radius_meters as number) || 100;
-          const startDate = args?.start_date
-            ? new Date(args.start_date as string)
-            : undefined;
-          const endDate = args?.end_date
-            ? new Date(args.end_date as string)
-            : undefined;
+          const startDate = args?.start_date ? new Date(args.start_date as string) : undefined;
+          const endDate = args?.end_date ? new Date(args.end_date as string) : undefined;
 
           const locations = await database.getLocationsNear(
             USER_ID,
@@ -910,9 +894,7 @@ function setupToolHandlers(server: Server) {
 
         case 'get_frequent_places': {
           const places = await database.getAllPlaces(USER_ID);
-          const sorted = places.sort(
-            (a, b) => (b.visit_count || 0) - (a.visit_count || 0)
-          );
+          const sorted = places.sort((a, b) => (b.visit_count || 0) - (a.visit_count || 0));
 
           return {
             content: [
@@ -958,20 +940,14 @@ function setupToolHandlers(server: Server) {
                       start: startDate,
                       end: endDate,
                     },
-                    total_distance_km: (stats.total_distance_meters / 1000).toFixed(
-                      2
-                    ),
-                    total_distance_miles: (
-                      stats.total_distance_meters / 1609.34
-                    ).toFixed(2),
+                    total_distance_km: (stats.total_distance_meters / 1000).toFixed(2),
+                    total_distance_miles: (stats.total_distance_meters / 1609.34).toFixed(2),
                     average_speed_mph:
                       stats.average_speed_mps > 0
                         ? (stats.average_speed_mps * 2.237).toFixed(1)
                         : 0,
                     max_speed_mph:
-                      stats.max_speed_mps > 0
-                        ? (stats.max_speed_mps * 2.237).toFixed(1)
-                        : 0,
+                      stats.max_speed_mps > 0 ? (stats.max_speed_mps * 2.237).toFixed(1) : 0,
                   },
                   null,
                   2
@@ -1048,12 +1024,8 @@ function setupToolHandlers(server: Server) {
         case 'get_place_visits': {
           let placeId = args?.place_id as number | undefined;
           const placeName = args?.place_name as string | undefined;
-          const startDate = args?.start_date
-            ? new Date(args.start_date as string)
-            : undefined;
-          const endDate = args?.end_date
-            ? new Date(args.end_date as string)
-            : undefined;
+          const startDate = args?.start_date ? new Date(args.start_date as string) : undefined;
+          const endDate = args?.end_date ? new Date(args.end_date as string) : undefined;
 
           // If place name provided, find the place ID
           if (placeName && !placeId) {
@@ -1062,12 +1034,7 @@ function setupToolHandlers(server: Server) {
             if (place) placeId = place.id;
           }
 
-          const visits = await database.getPlaceVisits(
-            USER_ID,
-            startDate,
-            endDate,
-            placeId
-          );
+          const visits = await database.getPlaceVisits(USER_ID, startDate, endDate, placeId);
 
           return {
             content: [
@@ -1109,17 +1076,9 @@ function setupToolHandlers(server: Server) {
             if (place) targetPlaceId = place.id;
           }
 
-          const visits = await database.getPlaceVisits(
-            USER_ID,
-            startDate,
-            endDate,
-            targetPlaceId
-          );
+          const visits = await database.getPlaceVisits(USER_ID, startDate, endDate, targetPlaceId);
 
-          const totalMinutes = visits.reduce(
-            (sum, v) => sum + (v.duration_minutes || 0),
-            0
-          );
+          const totalMinutes = visits.reduce((sum, v) => sum + (v.duration_minutes || 0), 0);
 
           return {
             content: [
@@ -1133,9 +1092,7 @@ function setupToolHandlers(server: Server) {
                     total_time_minutes: totalMinutes,
                     total_time_hours: (totalMinutes / 60).toFixed(1),
                     average_visit_minutes:
-                      visits.length > 0
-                        ? (totalMinutes / visits.length).toFixed(1)
-                        : 0,
+                      visits.length > 0 ? (totalMinutes / visits.length).toFixed(1) : 0,
                   },
                   null,
                   2
@@ -1176,10 +1133,7 @@ function setupToolHandlers(server: Server) {
             };
           }
 
-          const googleData = await googlePlaces.reverseGeocode(
-            place.center_lat,
-            place.center_lng
-          );
+          const googleData = await googlePlaces.reverseGeocode(place.center_lat, place.center_lng);
 
           if (googleData && googleData.google_place_id) {
             const category = googleData.google_place_types
@@ -1228,10 +1182,7 @@ function setupToolHandlers(server: Server) {
 
         case 'get_unlabeled_frequent_places': {
           const minVisits = (args?.min_visits as number) || 3;
-          const places = await placesAnalyzer.getUnlabeledFrequentPlaces(
-            USER_ID,
-            minVisits
-          );
+          const places = await placesAnalyzer.getUnlabeledFrequentPlaces(USER_ID, minVisits);
 
           return {
             content: [
@@ -1240,8 +1191,7 @@ function setupToolHandlers(server: Server) {
                 text: JSON.stringify(
                   {
                     message: `Found ${places.length} unlabeled places with ${minVisits}+ visits`,
-                    suggestion:
-                      'Use label_place tool to name these places (e.g., "Home", "Work")',
+                    suggestion: 'Use label_place tool to name these places (e.g., "Home", "Work")',
                     places: places.map((p) => ({
                       id: p.id,
                       visit_count: p.visit_count,
@@ -1262,9 +1212,7 @@ function setupToolHandlers(server: Server) {
         }
 
         case 'process_recent_locations': {
-          const processed = await placesAnalyzer.processUnprocessedLocations(
-            USER_ID
-          );
+          const processed = await placesAnalyzer.processUnprocessedLocations(USER_ID);
 
           return {
             content: [
@@ -1333,7 +1281,8 @@ async function handleSSEConnection(req: any, res: any) {
     );
     return res.status(401).json({
       error: 'unauthorized',
-      error_description: 'Bearer token required. Discover OAuth endpoints via /.well-known/oauth-protected-resource',
+      error_description:
+        'Bearer token required. Discover OAuth endpoints via /.well-known/oauth-protected-resource',
       oauth_metadata: `${PUBLIC_URL}/.well-known/oauth-protected-resource`,
     });
   }
@@ -1400,23 +1349,23 @@ async function handleMessagePost(req: any, res: any) {
   const sessionId = req.query.sessionId as string;
 
   if (!sessionId) {
-    res.status(400).send('Missing sessionId parameter');
-    return;
+    return res.status(400).send('Missing sessionId parameter');
   }
 
   const transport = transports.get(sessionId);
 
   if (!transport) {
-    res.status(404).json({ error: 'Session not found' });
-    return;
+    return res.status(404).json({ error: 'Session not found' });
   }
 
   try {
-    await transport.handlePostMessage(req, res);
+    // CRITICAL: Pass 3 parameters - req, res, AND req.body
+    // This is the working pattern from whoop-mcp-server
+    return await transport.handlePostMessage(req, res, req.body);
   } catch (error) {
     console.error(`Error handling message:`, error);
     if (!res.headersSent) {
-      res.status(500).json({ error: 'Internal server error' });
+      return res.status(500).json({ error: 'Internal server error' });
     }
   }
 }
@@ -1492,13 +1441,15 @@ app.post('/upload', async (req, res) => {
     placesAnalyzer
       .processUnprocessedLocations(USER_ID)
       .then((processed) => {
-        console.log(`🔍 Background processing: ${processed} locations processed for user ${userId}`);
+        console.log(
+          `🔍 Background processing: ${processed} locations processed for user ${userId}`
+        );
       })
       .catch((err) => {
         console.error('❌ Background processing error:', err);
       });
 
-    res.json({
+    return res.json({
       success: true,
       received: payload.locations.length,
       inserted,
@@ -1506,7 +1457,7 @@ app.post('/upload', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Upload error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Failed to process upload',
       details: error instanceof Error ? error.message : String(error),
     });
