@@ -102,11 +102,12 @@ export class PlacesAnalyzer {
       const prev = sorted[i - 1];
       const curr = sorted[i];
 
+      // Convert string values to numbers (pg returns NUMERIC as strings)
       const distance = this.haversineDistance(
-        prev.latitude,
-        prev.longitude,
-        curr.latitude,
-        curr.longitude
+        Number(prev.latitude),
+        Number(prev.longitude),
+        Number(curr.latitude),
+        Number(curr.longitude)
       );
 
       const timeDiffMinutes = (curr.timestamp.getTime() - prev.timestamp.getTime()) / 1000 / 60;
@@ -135,8 +136,9 @@ export class PlacesAnalyzer {
    * Create cluster summary from points
    */
   private createCluster(points: LocationPoint[]): LocationCluster {
-    const avgLat = points.reduce((sum, p) => sum + p.latitude, 0) / points.length;
-    const avgLng = points.reduce((sum, p) => sum + p.longitude, 0) / points.length;
+    // Convert string values to numbers (pg returns NUMERIC as strings)
+    const avgLat = points.reduce((sum, p) => sum + Number(p.latitude), 0) / points.length;
+    const avgLng = points.reduce((sum, p) => sum + Number(p.longitude), 0) / points.length;
 
     const timestamps = points.map((p) => p.timestamp.getTime());
     const start = new Date(Math.min(...timestamps));

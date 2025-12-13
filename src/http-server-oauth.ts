@@ -226,6 +226,142 @@ app.get('/health', (_req, res) => {
   });
 });
 
+// REST API endpoint for daily location summary (used by insights aggregator)
+// This endpoint allows the backend to fetch location data for insight generation
+app.get('/api/daily', async (req, res) => {
+  try {
+    const { date, userId, timezone } = req.query;
+
+    if (!date) {
+      return res.status(400).json({ error: 'date parameter is required (YYYY-MM-DD)' });
+    }
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId parameter is required' });
+    }
+
+    const userIdNum = parseInt(userId as string, 10);
+    if (isNaN(userIdNum)) {
+      return res.status(400).json({ error: 'userId must be a valid integer' });
+    }
+
+    // Parse date and create start/end of day (timezone aware if provided)
+    const dateObj = new Date(date as string);
+    const startOfDay = new Date(dateObj);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(dateObj);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    console.log(`📍 /api/daily: Fetching location data for user ${userIdNum} on ${date} (tz: ${timezone || 'UTC'})`);
+
+    // Get place visits for the day
+    const visits = await database.getPlaceVisits(userIdNum.toString(), startOfDay, endOfDay);
+
+    // Get location history to calculate movement activities
+    const locations = await database.getLocationHistory(userIdNum.toString(), startOfDay, endOfDay, 1000);
+
+    // Format places visited
+    const places = visits.map((v) => ({
+      name: v.place?.name || v.place?.google_place_name || '(unnamed place)',
+      address: v.place?.address || '',
+      startTime: v.arrival_time?.toISOString() || '',
+      endTime: v.departure_time?.toISOString() || '',
+      duration_minutes: v.duration_minutes || 0,
+    }));
+
+    // Calculate activities from location points
+    const activities: Array<{ type: string; distance_meters: number; duration_minutes: number }> = [];
+
+    // Simple activity detection based on speed
+    let currentActivity: { type: string; startIdx: number; distance: number } | null = null;
+
+    for (let i = 1; i < locations.length; i++) {
+      const prev = locations[i - 1];
+      const curr = locations[i];
+
+      // Calculate distance using Haversine formula (simplified)
+      const R = 6371000; // Earth's radius in meters
+      const dLat = ((curr.latitude - prev.latitude) * Math.PI) / 180;
+      const dLon = ((curr.longitude - prev.longitude) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((prev.latitude * Math.PI) / 180) *
+          Math.cos((curr.latitude * Math.PI) / 180) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distance = R * c;
+
+      const timeDiff = (curr.timestamp.getTime() - prev.timestamp.getTime()) / 1000; // seconds
+      const speedMps = timeDiff > 0 ? distance / timeDiff : 0;
+
+      // Classify activity by speed
+      let activityType = 'STATIONARY';
+      if (speedMps > 10) activityType = 'DRIVING'; // > 36 km/h
+      else if (speedMps > 2) activityType = 'CYCLING'; // 7-36 km/h
+      else if (speedMps > 0.5) activityType = 'WALKING'; // 1.8-7 km/h
+
+      // Continue or start new activity
+      if (currentActivity && currentActivity.type === activityType) {
+        currentActivity.distance += distance;
+      } else {
+        // Save previous activity if significant
+        if (currentActivity && currentActivity.distance > 50) {
+          const duration =
+            (curr.timestamp.getTime() - locations[currentActivity.startIdx].timestamp.getTime()) / 60000;
+          activities.push({
+            type: currentActivity.type,
+            distance_meters: Math.round(currentActivity.distance),
+            duration_minutes: Math.round(duration),
+          });
+        }
+
+        // Start new activity
+        if (activityType !== 'STATIONARY') {
+          currentActivity = {
+            type: activityType,
+            startIdx: i,
+            distance: distance,
+          };
+        } else {
+          currentActivity = null;
+        }
+      }
+    }
+
+    // Save final activity
+    if (currentActivity && currentActivity.distance > 50 && locations.length > 0) {
+      const lastPoint = locations[locations.length - 1];
+      const startPoint = locations[currentActivity.startIdx];
+      const duration = (lastPoint.timestamp.getTime() - startPoint.timestamp.getTime()) / 60000;
+      activities.push({
+        type: currentActivity.type,
+        distance_meters: Math.round(currentActivity.distance),
+        duration_minutes: Math.round(duration),
+      });
+    }
+
+    console.log(`✅ /api/daily: Found ${places.length} places and ${activities.length} activities for ${date}`);
+
+    return res.json({
+      date: date,
+      userId: userIdNum,
+      places: places,
+      activities: activities,
+      _metadata: {
+        totalLocationPoints: locations.length,
+        totalVisits: visits.length,
+      },
+    });
+  } catch (error) {
+    console.error('❌ /api/daily error:', error);
+    return res.status(500).json({
+      error: 'Failed to fetch location data',
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
 // OAuth authorization redirect endpoint
 app.get('/oauth/authorize', (req, res) => {
   const state = req.query.state || uuidv4();
@@ -1376,6 +1512,7 @@ app.post('/message', handleMessagePost);
 app.post('/MESSAGE', handleMessagePost);
 
 // Upload endpoint for iOS app - requires Bearer token authentication
+// Supports both OAuth tokens and API keys (lifeos_ prefix)
 app.post('/upload', async (req, res) => {
   try {
     // Validate Bearer token
@@ -1393,19 +1530,35 @@ app.post('/upload', async (req, res) => {
       });
     }
 
-    // Validate token and get user ID
-    let userId: number;
-    try {
-      userId = await getUserIdFromToken(accessToken);
-      console.log(`✅ Upload authorized for user ${userId}`);
-    } catch (error) {
-      return res.status(401).json({
-        error: 'invalid_token',
-        error_description: 'The access token is invalid or expired',
-      });
-    }
+    // Validate token and get user ID (email)
+    let USER_ID: string;
 
-    const USER_ID = userId.toString();
+    // Check if it's an API key (lifeos_ prefix)
+    if (accessToken.startsWith('lifeos_')) {
+      const userEmail = await database.getUserEmailByApiKey(accessToken);
+      if (userEmail) {
+        USER_ID = userEmail;
+        console.log(`✅ Upload authorized via API key for user: ${userEmail}`);
+      } else {
+        console.warn(`⚠️ Invalid API key provided`);
+        return res.status(401).json({
+          error: 'invalid_token',
+          error_description: 'The API key is invalid',
+        });
+      }
+    } else {
+      // OAuth token - validate with backend
+      try {
+        const userId = await getUserIdFromToken(accessToken);
+        USER_ID = userId.toString();
+        console.log(`✅ Upload authorized via OAuth for user ${userId}`);
+      } catch (error) {
+        return res.status(401).json({
+          error: 'invalid_token',
+          error_description: 'The access token is invalid or expired',
+        });
+      }
+    }
     const payload = req.body as LocationUploadPayload;
 
     if (!payload.locations || !Array.isArray(payload.locations)) {
@@ -1413,7 +1566,7 @@ app.post('/upload', async (req, res) => {
     }
 
     console.log(
-      `📤 Received ${payload.locations.length} location points from ${payload.device?.model || 'unknown device'} for user ${userId}`
+      `📤 Received ${payload.locations.length} location points from ${payload.device?.model || 'unknown device'} for user ${USER_ID}`
     );
 
     // Convert to database format
@@ -1442,7 +1595,7 @@ app.post('/upload', async (req, res) => {
       .processUnprocessedLocations(USER_ID)
       .then((processed) => {
         console.log(
-          `🔍 Background processing: ${processed} locations processed for user ${userId}`
+          `🔍 Background processing: ${processed} locations processed for user ${USER_ID}`
         );
       })
       .catch((err) => {

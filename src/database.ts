@@ -274,6 +274,8 @@ export class Database {
    * Create or update a place
    */
   async upsertPlace(place: Place): Promise<Place> {
+    // Use separate parameters for geometry (double precision) and columns (numeric)
+    // to avoid PostgreSQL type inference issues
     const result = await this.pool.query(
       `
       INSERT INTO places (
@@ -281,7 +283,7 @@ export class Database {
         address, google_place_id, google_place_name, google_place_types,
         geom
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, ST_SetSRID(ST_MakePoint($5, $4), 4326)::geography)
+      VALUES ($1, $2, $3, $4::numeric, $5::numeric, $6, $7, $8, $9, $10, ST_SetSRID(ST_MakePoint($11, $12), 4326)::geography)
       ON CONFLICT (user_id, google_place_id)
       DO UPDATE SET
         name = COALESCE(EXCLUDED.name, places.name),
@@ -302,6 +304,8 @@ export class Database {
         place.google_place_id || null,
         place.google_place_name || null,
         place.google_place_types || null,
+        Number(place.center_lng),  // $11 for ST_MakePoint (lng first)
+        Number(place.center_lat),  // $12 for ST_MakePoint (lat second)
       ]
     );
 
@@ -550,6 +554,27 @@ export class Database {
    */
   async query(text: string, params?: any[]): Promise<any> {
     return this.pool.query(text, params);
+  }
+
+  /**
+   * Look up user email by API key
+   * API keys start with 'lifeos_' prefix
+   */
+  async getUserEmailByApiKey(apiKey: string): Promise<string | null> {
+    if (!apiKey || !apiKey.startsWith('lifeos_')) {
+      return null;
+    }
+
+    const result = await this.pool.query(
+      'SELECT email FROM users WHERE api_key = $1',
+      [apiKey]
+    );
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    return result.rows[0].email;
   }
 
   /**

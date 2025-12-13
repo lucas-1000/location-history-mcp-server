@@ -1047,6 +1047,27 @@ app.post('/message', async (req, res) => {
 // Upload endpoint for iOS app
 app.post('/upload', async (req, res) => {
   try {
+    // Extract API key from Authorization header
+    const authHeader = req.headers.authorization;
+    let userId = USER_ID; // Default fallback
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+
+      // Look up user by API key
+      if (token.startsWith('lifeos_')) {
+        const userEmail = await database.getUserEmailByApiKey(token);
+        if (userEmail) {
+          userId = userEmail;
+          console.log(`🔐 Authenticated user: ${userEmail}`);
+        } else {
+          console.warn(`⚠️ Invalid API key provided, using default`);
+        }
+      }
+    } else {
+      console.warn(`⚠️ No Authorization header, using default user ID`);
+    }
+
     const payload = req.body as LocationUploadPayload;
 
     if (!payload.locations || !Array.isArray(payload.locations)) {
@@ -1054,12 +1075,12 @@ app.post('/upload', async (req, res) => {
     }
 
     console.log(
-      `📤 Received ${payload.locations.length} location points from ${payload.device?.model || 'unknown device'}`
+      `📤 Received ${payload.locations.length} location points from ${payload.device?.model || 'unknown device'} for user ${userId}`
     );
 
     // Convert to database format
     const locationPoints = payload.locations.map((loc) => ({
-      user_id: USER_ID,
+      user_id: userId,
       latitude: loc.latitude,
       longitude: loc.longitude,
       accuracy: loc.accuracy,
@@ -1080,9 +1101,9 @@ app.post('/upload', async (req, res) => {
     // Trigger background processing (place detection)
     // Run async without blocking response
     placesAnalyzer
-      .processUnprocessedLocations(USER_ID)
+      .processUnprocessedLocations(userId)
       .then((processed) => {
-        console.log(`🔍 Background processing: ${processed} locations processed`);
+        console.log(`🔍 Background processing: ${processed} locations processed for ${userId}`);
       })
       .catch((err) => {
         console.error('❌ Background processing error:', err);
@@ -1092,6 +1113,7 @@ app.post('/upload', async (req, res) => {
       success: true,
       received: payload.locations.length,
       inserted,
+      userId,
       message: 'Locations stored successfully',
     });
   } catch (error) {
