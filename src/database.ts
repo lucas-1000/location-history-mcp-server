@@ -557,6 +557,23 @@ export class Database {
   }
 
   /**
+   * Look up user email by numeric user ID
+   * Used to resolve numeric IDs to email for location data queries
+   */
+  async getUserEmailById(userId: number): Promise<string | null> {
+    const result = await this.pool.query(
+      'SELECT email FROM users WHERE id = $1',
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    return result.rows[0].email;
+  }
+
+  /**
    * Look up user email by API key
    * API keys start with 'lifeos_' prefix
    */

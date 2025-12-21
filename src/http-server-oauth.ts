@@ -245,6 +245,13 @@ app.get('/api/daily', async (req, res) => {
       return res.status(400).json({ error: 'userId must be a valid integer' });
     }
 
+    // Resolve numeric user ID to email (location data is stored with email as user_id)
+    const userEmail = await database.getUserEmailById(userIdNum);
+    if (!userEmail) {
+      console.log(`⚠️ /api/daily: User ${userIdNum} not found in database`);
+      return res.status(404).json({ error: 'User not found' });
+    }
+
     // Parse date and create start/end of day (timezone aware if provided)
     const dateObj = new Date(date as string);
     const startOfDay = new Date(dateObj);
@@ -252,13 +259,13 @@ app.get('/api/daily', async (req, res) => {
     const endOfDay = new Date(dateObj);
     endOfDay.setHours(23, 59, 59, 999);
 
-    console.log(`📍 /api/daily: Fetching location data for user ${userIdNum} on ${date} (tz: ${timezone || 'UTC'})`);
+    console.log(`📍 /api/daily: Fetching location data for user ${userIdNum} (${userEmail}) on ${date} (tz: ${timezone || 'UTC'})`);
 
-    // Get place visits for the day
-    const visits = await database.getPlaceVisits(userIdNum.toString(), startOfDay, endOfDay);
+    // Get place visits for the day (using email as user_id)
+    const visits = await database.getPlaceVisits(userEmail, startOfDay, endOfDay);
 
-    // Get location history to calculate movement activities
-    const locations = await database.getLocationHistory(userIdNum.toString(), startOfDay, endOfDay, 1000);
+    // Get location history to calculate movement activities (using email as user_id)
+    const locations = await database.getLocationHistory(userEmail, startOfDay, endOfDay, 1000);
 
     // Format places visited
     const places = visits.map((v) => ({
@@ -1581,9 +1588,9 @@ app.post('/upload', async (req, res) => {
       course: loc.course,
       timestamp: new Date(loc.timestamp),
       local_timezone: loc.timezone,
-      device_model: payload.device.model,
-      device_os: payload.device.os,
-      app_version: payload.device.appVersion,
+      device_model: payload.device?.model,
+      device_os: payload.device?.os,
+      app_version: payload.device?.appVersion,
     }));
 
     // Store in database

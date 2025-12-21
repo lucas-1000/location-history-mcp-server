@@ -1078,7 +1078,7 @@ app.post('/upload', async (req, res) => {
       `📤 Received ${payload.locations.length} location points from ${payload.device?.model || 'unknown device'} for user ${userId}`
     );
 
-    // Convert to database format
+    // Convert to database format (device info is optional)
     const locationPoints = payload.locations.map((loc) => ({
       user_id: userId,
       latitude: loc.latitude,
@@ -1090,9 +1090,9 @@ app.post('/upload', async (req, res) => {
       course: loc.course,
       timestamp: new Date(loc.timestamp),
       local_timezone: loc.timezone,
-      device_model: payload.device.model,
-      device_os: payload.device.os,
-      app_version: payload.device.appVersion,
+      device_model: payload.device?.model,
+      device_os: payload.device?.os,
+      app_version: payload.device?.appVersion,
     }));
 
     // Store in database
